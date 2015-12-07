@@ -238,7 +238,9 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                 else:
                     self.textbox.setVisible(False)
                 # get the file or foldername if enabled in settings
+                NAME = None
                 if self.slideshow_name != '0':
+                    self.namelabel.setLabel('')
                     if self.slideshow_name == '1':
                         if self.slideshow_type == '2':
                             NAME, EXT = os.path.splitext(os.path.basename(img[0]))
@@ -254,7 +256,6 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                         else:
                             ROOT, FOLDER = os.path.split(os.path.dirname(img[0]))
                             NAME = FOLDER + ' / ' + img[1]
-                    self.namelabel.setLabel(NAME)
                 # set animations
                 if self.slideshow_effect == '0':
                     # add slide anim
@@ -284,6 +285,8 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                 # display the image for the specified amount of time
                 while (not self.Monitor.abortRequested()) and (not self.stop) and count > 0:
                     count -= 1
+                    if count == 1 and NAME is not None:
+                        self.namelabel.setLabel('[B]' + NAME + '[/B]')
                     xbmc.sleep(1000)
                 # break out of the for loop if onScreensaverDeactivated is called
                 if  self.stop or self.Monitor.abortRequested():
