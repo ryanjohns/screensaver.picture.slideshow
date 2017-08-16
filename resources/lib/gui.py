@@ -389,11 +389,16 @@ class Screensaver(xbmcgui.WindowXMLDialog):
 
     def _get_animspeed(self):
         # find the skindir
-        json_query = xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.GetAddonDetails", "params": {"addonid": "%s", "properties": ["path", "extrainfo"]}, "id": 1}' % SKINDIR)
+        json_query = xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.GetAddonDetails", "params": {"addonid": "%s", "properties": ["path"]}, "id": 1}' % SKINDIR)
         json_query = unicode(json_query, 'utf-8', errors='ignore')
         json_response = json.loads(json_query)
         if json_response.has_key('result') and (json_response['result'] != None) and json_response['result'].has_key('addon') and json_response['result']['addon'].has_key('path'):
             skinpath = json_response['result']['addon']['path']
+        else:
+            log('failed to retrieve skin path')
+            log(SKINDIR)
+            log(json_query)
+            return
         skinxml = xbmc.translatePath( os.path.join( skinpath, 'addon.xml' ).encode('utf-8') ).decode('utf-8')
         try:
             # parse the skin addon.xml
@@ -407,6 +412,7 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                         anim = value
                         return anim
         except:
+            log('failed to parse addon.xml')
             return
 
     def _set_prop(self, name, value):
