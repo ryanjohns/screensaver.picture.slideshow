@@ -1,3 +1,6 @@
+v5.0.1
+- add black background
+
 v4.2.3
 - don't crash when failing to retrieve skinpath
 
