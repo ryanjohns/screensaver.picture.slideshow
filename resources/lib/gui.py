@@ -16,6 +16,8 @@
 import random, copy, threading
 import xbmcgui, xbmcaddon
 import EXIFvfs
+import subprocess
+import uuid
 from iptcinfovfs import IPTCInfo
 from XMPvfs import XMP_Tags
 from xml.dom.minidom import parse
@@ -144,7 +146,11 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                 if self.slideshow_type == '2' and not xbmcvfs.exists(img[0]):
                     continue
                 # add image to gui
-                cur_img.setImage(img[0],False)
+                screenshot_path, screenshot_seconds = self._grab_screenshot(img[3])
+                if screenshot_path is not None:
+                    cur_img.setImage(screenshot_path,False)
+                else:
+                    cur_img.setImage(img[0],False)
                 # add background image to gui
                 if self.slideshow_scale == 'false' and self.slideshow_bg == 'true':
                     if order[0] == 1:
@@ -238,12 +244,14 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                 else:
                     self.textbox.setVisible(False)
                 # get the file or foldername if enabled in settings
+                NAME = None
                 if self.slideshow_name != '0':
+                    self.namelabel.setLabel('')
                     if self.slideshow_name == '1':
                         if self.slideshow_type == '2':
                             NAME, EXT = os.path.splitext(os.path.basename(img[0]))
                         else:
-                            NAME = img[1]
+                            NAME = img[1] + ' (' + str(img[2]) + ')'
                     elif self.slideshow_name == '2':
                         ROOT, NAME = os.path.split(os.path.dirname(img[0]))
                     elif self.slideshow_name == '3':
@@ -254,7 +262,6 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                         else:
                             ROOT, FOLDER = os.path.split(os.path.dirname(img[0]))
                             NAME = FOLDER + ' / ' + img[1]
-                    self.namelabel.setLabel(NAME)
                 # set animations
                 if self.slideshow_effect == '0':
                     # add slide anim
@@ -284,7 +291,11 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                 # display the image for the specified amount of time
                 while (not self.Monitor.abortRequested()) and (not self.stop) and count > 0:
                     count -= 1
+                    if count == 1 and NAME is not None:
+                        self.namelabel.setLabel('[B]' + NAME + '[/B]' + self._get_time_suffix(screenshot_seconds))
                     xbmc.sleep(1000)
+                if screenshot_path is not None and os.path.isfile(screenshot_path):
+                    os.remove(screenshot_path)
                 # break out of the for loop if onScreensaverDeactivated is called
                 if  self.stop or self.Monitor.abortRequested():
                     break
@@ -312,7 +323,7 @@ class Screensaver(xbmcgui.WindowXMLDialog):
                     xbmcvfs.delete(CACHEFILE % hexfile)
 	    # video fanart
         if self.slideshow_type == '0':
-            methods = [('VideoLibrary.GetMovies', 'movies'), ('VideoLibrary.GetTVShows', 'tvshows')]
+            methods = [('VideoLibrary.GetMovies', 'movies')]
 	    # music fanart
         elif self.slideshow_type == '1':
             methods = [('AudioLibrary.GetArtists', 'artists')]
@@ -320,17 +331,51 @@ class Screensaver(xbmcgui.WindowXMLDialog):
         if not self.slideshow_type == '2':
             self.items = []
             for method in methods:
-                json_query = xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "' + method[0] + '", "params": {"properties": ["fanart"]}, "id": 1}')
+                json_query = xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "' + method[0] + '", "params": {"properties": ["fanart", "year", "file"]}, "id": 1}')
                 json_query = unicode(json_query, 'utf-8', errors='ignore')
                 json_response = json.loads(json_query)
                 if json_response.has_key('result') and json_response['result'] != None and json_response['result'].has_key(method[1]):
                     for item in json_response['result'][method[1]]:
-                        if item['fanart']:
-                            self.items.append([item['fanart'], item['label']])
+                        if item['fanart'] and item['file']:
+                            self.items.append([item['fanart'], item['label'], item['year'], item['file']])
         # randomize
         if self.slideshow_random == 'true':
             random.seed()
             random.shuffle(self.items, random.random)
+
+    def _grab_screenshot(self, path):
+        if not (os.path.isfile(path) and os.path.isfile('/usr/local/bin/ffprobe') and os.path.isfile('/usr/local/bin/ffmpeg')):
+            return [None, None]
+        try:
+            command = ['/usr/local/bin/ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path]
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, err = proc.communicate()
+            duration = int(float(out.strip()))
+            screenshot_path = os.path.join('/tmp', 'kodi_' + uuid.uuid4().hex + '.jpg')
+            screenshot_seconds = random.randint(0, int(0.9 * duration))
+            command = ['/usr/local/bin/ffmpeg', '-y', '-ss', str(screenshot_seconds), '-i', path, '-vframes', '1', '-f', 'image2', screenshot_path, '-v', 'quiet']
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, err = proc.communicate()
+            if os.path.isfile(screenshot_path):
+                return [screenshot_path, screenshot_seconds]
+        except Exception as e:
+            log('exception %s' % e.message)
+        return [None, None]
+
+    def _get_time_suffix(self, seconds):
+        if seconds is None:
+            return ''
+        try:
+            s = str(seconds % 60).zfill(2)
+            m = str(seconds / 60 % 60).zfill(2)
+            pretty_time = m + ':' + s
+            if seconds >= 3600:
+                h = str(seconds / 3600)
+                pretty_time = h + ':' + pretty_time
+            return ' | ' + pretty_time
+        except:
+            pass
+        return ''
 
     def _get_offset(self):
         try:
